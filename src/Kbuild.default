@@ -1,0 +1,2 @@
+anycast_roaming-objs := core.o
+obj-m += anycast_roaming.o
