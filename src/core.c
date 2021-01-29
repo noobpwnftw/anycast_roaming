@@ -902,6 +902,7 @@ static void send_encapsulated(struct net *net, __u32 my_notify_addr, __u32 origi
 	}
 	skb_dst_drop(skb);
 	skb_dst_set(skb, &rt->dst);
+	/*
 	if (likely(ip_hdr(skb)->frag_off & htons(IP_DF))) {
 		int mtu = dst_mtu(&rt->dst);
 		if (sizeof(*iph) + sizeof(*icmph) + data_len > mtu) {
@@ -917,6 +918,8 @@ static void send_encapsulated(struct net *net, __u32 my_notify_addr, __u32 origi
 	} else {
 		skb->ignore_df = 1;
 	}
+	*/
+	skb->ignore_df = 1;
 	head_len = rt->dst.dev->hard_header_len + sizeof(*iph) + sizeof(*icmph);
 	if (skb_headroom(skb) < head_len && pskb_expand_head(skb, ALIGN(head_len - skb_headroom(skb), NET_SKB_PAD), 0, GFP_ATOMIC)) {
 		kfree_skb(skb);
@@ -1185,6 +1188,8 @@ anycast_roaming_in_hook(void *priv, struct sk_buff *skb, const struct nf_hook_st
 					goto out;
 				}
 #endif
+				memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+				IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 				nf_reset(skb);
 				if (!skb_is_gso(skb)) {
 					send_encapsulated(state->net, addr_entry->my_notify_addr, notify_entry->addr, skb, skb_csum_unnecessary(skb) ? ANYCAST_ROAMING_ENCAP_IN_NO_CHECKSUM : ANYCAST_ROAMING_ENCAP_IN);
@@ -1225,6 +1230,8 @@ anycast_roaming_in_hook(void *priv, struct sk_buff *skb, const struct nf_hook_st
 				entry = anycast_roaming_notify_get(&tuple);
 				if (entry) {
 					if (entry->origin != addr_entry->my_notify_addr) {
+						memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+						IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 						nf_reset(skb);
 						if (!skb_is_gso(skb)) {
 							send_encapsulated(state->net, addr_entry->my_notify_addr, entry->origin, skb, skb_csum_unnecessary(skb) ? ANYCAST_ROAMING_ENCAP_IN_NO_CHECKSUM : ANYCAST_ROAMING_ENCAP_IN);
@@ -1286,6 +1293,8 @@ anycast_roaming_in_hook(void *priv, struct sk_buff *skb, const struct nf_hook_st
 							read_unlock_bh(&g_addr_rwlock);
 							return NF_DROP;
 						} else {
+							memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+							IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 							nf_reset(skb);
 							send_relay(state->net, addr_entry->my_notify_addr, notify_entry->addr, skb);
 							read_unlock_bh(&g_addr_rwlock);
@@ -1399,6 +1408,8 @@ rx_out1:
 							read_unlock_bh(&g_addr_rwlock);
 							goto out;
 						}
+						memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+						IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 						nf_reset(skb);
 						send_relay(state->net, addr_entry->my_notify_addr, notify_entry->addr, skb);
 						read_unlock_bh(&g_addr_rwlock);
@@ -1455,6 +1466,8 @@ rx_out1:
 						tuple.daddr = inner_ih->saddr;
 						rpath_entry = anycast_roaming_rpath_get(&tuple);
 						if (rpath_entry) {
+							memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+							IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 							nf_reset(skb);
 							send_relay(state->net, addr_entry->my_notify_addr, rpath_entry->origin, skb);
 							read_unlock_bh(&g_addr_rwlock);
@@ -1467,6 +1480,8 @@ rx_out1:
 								read_unlock_bh(&g_addr_rwlock);
 								goto out;
 							}
+							memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+							IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 							nf_reset(skb);
 							send_relay(state->net, addr_entry->my_notify_addr, notify_entry->addr, skb);
 							read_unlock_bh(&g_addr_rwlock);
@@ -1486,6 +1501,8 @@ rx_out1:
 						ip_rt_put(rt);
 						return NF_DROP;
 					}
+					memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+					IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 					nf_reset(skb);
 					skb_pull(skb, hdr_len + sizeof(*icmph));
 					skb_reset_network_header(skb);
@@ -1534,6 +1551,8 @@ rx_out2:
 				goto out;
 			}
 #endif
+			memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+			IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 			nf_reset(skb);
 			if (!skb_is_gso(skb)) {
 				send_encapsulated(state->net, addr_entry->my_notify_addr, notify_entry->addr, skb, skb_csum_unnecessary(skb) ? ANYCAST_ROAMING_ENCAP_IN_NO_CHECKSUM : ANYCAST_ROAMING_ENCAP_IN);
@@ -1568,6 +1587,8 @@ rx_out2:
 			entry = anycast_roaming_notify_get(&tuple);
 			if (entry) {
 				if (entry->origin != addr_entry->my_notify_addr) {
+					memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+					IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 					nf_reset(skb);
 					if (!skb_is_gso(skb)) {
 						send_encapsulated(state->net, addr_entry->my_notify_addr, entry->origin, skb, skb_csum_unnecessary(skb) ? ANYCAST_ROAMING_ENCAP_IN_NO_CHECKSUM : ANYCAST_ROAMING_ENCAP_IN);
@@ -1602,6 +1623,8 @@ rx_out2:
 						read_unlock_bh(&g_addr_rwlock);
 						goto out;
 					}
+					memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+					IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 					nf_reset(skb);
 					if (!skb_is_gso(skb)) {
 						send_encapsulated(state->net, addr_entry->my_notify_addr, notify_entry->addr, skb, skb_csum_unnecessary(skb) ? ANYCAST_ROAMING_REROUTE_IN_NO_CHECKSUM : ANYCAST_ROAMING_REROUTE_IN);
@@ -1697,6 +1720,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 				anycast_roaming_rpath_put(rpath_entry);
 				return NF_DROP;
 			}
+			memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+			IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 			nf_reset(skb);
 			if (!skb_is_gso(skb)) {
 				if (skb->ip_summed != CHECKSUM_NONE && skb->ip_summed != CHECKSUM_UNNECESSARY) {
@@ -1739,6 +1764,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					read_unlock_bh(&g_addr_rwlock);
 					return NF_DROP;
 				}
+				memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+				IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 				nf_reset(skb);
 				if (!skb_is_gso(skb)) {
 					if (skb->ip_summed != CHECKSUM_NONE && skb->ip_summed != CHECKSUM_UNNECESSARY) {
@@ -1800,6 +1827,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 				anycast_roaming_rpath_put(rpath_entry);
 				return NF_DROP;
 			}
+			memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+			IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 			nf_reset(skb);
 			if (!skb_is_gso(skb)) {
 				if (skb->ip_summed != CHECKSUM_NONE && skb->ip_summed != CHECKSUM_UNNECESSARY) {
@@ -1842,6 +1871,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					read_unlock_bh(&g_addr_rwlock);
 					return NF_DROP;
 				}
+				memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+				IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 				nf_reset(skb);
 				if (!skb_is_gso(skb)) {
 					if (skb->ip_summed != CHECKSUM_NONE && skb->ip_summed != CHECKSUM_UNNECESSARY) {
@@ -1903,6 +1934,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 				anycast_roaming_rpath_put(rpath_entry);
 				return NF_DROP;
 			}
+			memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+			IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 			nf_reset(skb);
 			if (!skb_is_gso(skb)) {
 				if (skb->ip_summed != CHECKSUM_NONE && skb->ip_summed != CHECKSUM_UNNECESSARY) {
@@ -1945,6 +1978,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					read_unlock_bh(&g_addr_rwlock);
 					return NF_DROP;
 				}
+				memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+				IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 				nf_reset(skb);
 				if (!skb_is_gso(skb)) {
 					if (skb->ip_summed != CHECKSUM_NONE && skb->ip_summed != CHECKSUM_UNNECESSARY) {
