@@ -1165,7 +1165,7 @@ anycast_roaming_in_hook(void *priv, struct sk_buff *skb, const struct nf_hook_st
 				read_unlock_bh(&g_addr_rwlock);
 				goto out;
 			}
-			if (addr_entry->mode == ANYCAST_ROAMING_MODE_FORWARD || addr_entry->mode == ANYCAST_ROAMING_MODE_TUNNEL) {
+			if (addr_entry->mode != ANYCAST_ROAMING_MODE_ROAMING) {
 				struct anycast_roaming_notify_list_entry* notify_entry;
 				notify_entry = list_first_entry(&addr_entry->notify_list, struct anycast_roaming_notify_list_entry, list);
 #if !defined(LOCAL_POC)
@@ -1533,7 +1533,7 @@ rx_out2:
 			read_unlock_bh(&g_addr_rwlock);
 			goto out;
 		}
-		if (addr_entry->mode == ANYCAST_ROAMING_MODE_FORWARD || addr_entry->mode == ANYCAST_ROAMING_MODE_TUNNEL) {
+		if (addr_entry->mode != ANYCAST_ROAMING_MODE_ROAMING) {
 			struct anycast_roaming_notify_list_entry* notify_entry;
 			notify_entry = list_first_entry(&addr_entry->notify_list, struct anycast_roaming_notify_list_entry, list);
 #if !defined(LOCAL_POC)
