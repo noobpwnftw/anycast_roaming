@@ -2157,12 +2157,14 @@ static int anycast_roaming_addr_set_config(char* configstr)
 		if (kstrtoint(token2, 0, &entry->mode) || entry->mode < ANYCAST_ROAMING_MODE_ROAMING || entry->mode > ANYCAST_ROAMING_MODE_RELAY) {
 			write_unlock_bh(&g_addr_rwlock);
 			printk("invalid mode!\n");
+			kmem_cache_free(anycast_roaming_cachep_a, entry);
 			return -EINVAL;
 		}
 		token2 = strsep(&cur2, delim2);
 		if (kstrtoint(token2, 0, &entry->reroute) || entry->reroute < 0 || entry->reroute > 100) {
 			write_unlock_bh(&g_addr_rwlock);
 			printk("invalid reroute rate!\n");
+			kmem_cache_free(anycast_roaming_cachep_a, entry);
 			return -EINVAL;
 		}
 		INIT_LIST_HEAD(&entry->notify_list);
@@ -2195,11 +2197,15 @@ static int anycast_roaming_addr_set_config(char* configstr)
 		}
 found:
 		read_unlock(&dev_base_lock);
-
-		list_add(&entry->list, &anycast_roaming_addr_tab[jhash_1word(entry->anycast_ip, anycast_roaming_notify_rnd) & ANYCAST_ROAMING_ADDR_TAB_MASK]);
 		if (entry->my_notify_addr == 0) {
 			write_unlock_bh(&g_addr_rwlock);
 			printk("local unicast address not found!\n");
+			struct anycast_roaming_notify_list_entry *tmp;
+			list_for_each_entry_safe(entry2, tmp, &entry->notify_list, list) {
+				list_del(&entry2->list);
+				kmem_cache_free(anycast_roaming_cachep_l, entry2);
+			}
+			kmem_cache_free(anycast_roaming_cachep_a, entry);
 			return -EINVAL;
 		}
 		list_for_each_entry(entry2, &entry->notify_list, list) {
@@ -2208,6 +2214,7 @@ found:
 			na_entry->daddr = entry->my_notify_addr;
 			list_add(&na_entry->list, &anycast_roaming_notify_addr_tab[jhash_2words(na_entry->saddr, na_entry->daddr, anycast_roaming_notify_rnd) & ANYCAST_ROAMING_ADDR_TAB_MASK]);
 		}
+		list_add(&entry->list, &anycast_roaming_addr_tab[jhash_1word(entry->anycast_ip, anycast_roaming_notify_rnd) & ANYCAST_ROAMING_ADDR_TAB_MASK]);
 	}
 	write_unlock_bh(&g_addr_rwlock);
 	return 0;
