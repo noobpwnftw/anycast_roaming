@@ -810,7 +810,6 @@ static void send_notify(struct net *net, struct anycast_roaming_addr_entry *addr
 	struct icmphdr *icmph;
 	struct anycast_roaming_tuple *tuple_hdr;
 	struct anycast_roaming_notify_list_entry *notify_entry;
-	unsigned int icmp_offset;
 	struct rtable *rt;
 	struct flowi4 fl4 = {};
 	unsigned int hh_len;
@@ -853,7 +852,7 @@ static void send_notify(struct net *net, struct anycast_roaming_addr_entry *addr
 		iph->tos        = 0;
 		iph->id         = 0;
 		iph->frag_off   = htons(IP_DF);
-		iph->ttl        = 60;
+		iph->ttl        = ip4_dst_hoplimit(&rt->dst);
 		iph->protocol   = IPPROTO_ICMP;
 		iph->check      = 0;
 		iph->saddr      = addr_entry->my_notify_addr;
@@ -866,13 +865,12 @@ static void send_notify(struct net *net, struct anycast_roaming_addr_entry *addr
 		icmph->code = 0;
 		icmph->un.echo.id = 0xACAC;
 		icmph->un.echo.sequence = ANYCAST_ROAMING_NOTIFY;
-		icmp_offset = (unsigned char *)icmph - skb->data;
 
 		tuple_hdr = (struct anycast_roaming_tuple*)skb_put(skb, sizeof(*tuple_hdr));
 		memcpy(tuple_hdr, tuple, sizeof(*tuple_hdr));
 
 		icmph->checksum = 0;
-		icmph->checksum = csum_fold(skb_checksum(skb, icmp_offset, skb->len - icmp_offset, 0));
+		icmph->checksum = csum_fold(skb_checksum(skb, sizeof(*iph), sizeof(*icmph) + sizeof(*tuple_hdr), 0));
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 		skb_dst_set(skb, &rt->dst);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0)
@@ -936,7 +934,7 @@ static void send_encapsulated(struct net *net, __u32 my_notify_addr, __u32 origi
 	iph->ihl        = sizeof(*iph) >> 2;
 	iph->tos        = 0;
 	iph->frag_off   = htons(IP_DF);
-	iph->ttl        = 60;
+	iph->ttl        = ip4_dst_hoplimit(&rt->dst);
 	iph->protocol   = IPPROTO_ICMP;
 	iph->check      = 0;
 	iph->saddr      = my_notify_addr;
@@ -1021,7 +1019,6 @@ static void relay_notify(struct net *net, __u32 origin, struct anycast_roaming_a
 	struct icmphdr *icmph;
 	struct anycast_roaming_tuple *tuple_hdr;
 	struct anycast_roaming_notify_list_entry *notify_entry;
-	unsigned int icmp_offset;
 	struct rtable *rt;
 	struct flowi4 fl4 = {};
 	unsigned int hh_len;
@@ -1052,7 +1049,7 @@ static void relay_notify(struct net *net, __u32 origin, struct anycast_roaming_a
 		iph->tos        = 0;
 		iph->id         = 0;
 		iph->frag_off   = htons(IP_DF);
-		iph->ttl        = 60;
+		iph->ttl        = ip4_dst_hoplimit(&rt->dst);
 		iph->protocol   = IPPROTO_ICMP;
 		iph->check      = 0;
 		iph->saddr      = addr_entry->my_notify_addr;
@@ -1065,13 +1062,12 @@ static void relay_notify(struct net *net, __u32 origin, struct anycast_roaming_a
 		icmph->code = 0;
 		icmph->un.echo.id = 0xACAC;
 		icmph->un.echo.sequence = ANYCAST_ROAMING_NOTIFY;
-		icmp_offset = (unsigned char *)icmph - skb->data;
 
 		tuple_hdr = (struct anycast_roaming_tuple*)skb_put(skb, sizeof(*tuple_hdr));
 		memcpy(tuple_hdr, tuple, sizeof(*tuple_hdr));
 
 		icmph->checksum = 0;
-		icmph->checksum = csum_fold(skb_checksum(skb, icmp_offset, skb->len - icmp_offset, 0));
+		icmph->checksum = csum_fold(skb_checksum(skb, sizeof(*iph), sizeof(*icmph) + sizeof(*tuple_hdr), 0));
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 		skb_dst_set(skb, &rt->dst);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0)
@@ -1239,8 +1235,8 @@ anycast_roaming_in_hook(void *priv, struct sk_buff *skb, const struct nf_hook_st
 							struct sk_buff *segs;
 							segs = skb_gso_segment(skb, 0);
 							if (unlikely(IS_ERR(segs))) {
-								read_unlock_bh(&g_addr_rwlock);
 								anycast_roaming_notify_put(entry);
+								read_unlock_bh(&g_addr_rwlock);
 								return NF_DROP;
 							}
 							kfree_skb(skb);
@@ -1251,8 +1247,8 @@ anycast_roaming_in_hook(void *priv, struct sk_buff *skb, const struct nf_hook_st
 								segs = nskb;
 							} while (segs);
 						}
-						read_unlock_bh(&g_addr_rwlock);
 						anycast_roaming_notify_put(entry);
+						read_unlock_bh(&g_addr_rwlock);
 						return NF_STOLEN;
 					}
 					anycast_roaming_notify_put(entry);
@@ -1470,8 +1466,8 @@ rx_out1:
 							IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 							nf_reset(skb);
 							send_relay(state->net, addr_entry->my_notify_addr, rpath_entry->origin, skb);
-							read_unlock_bh(&g_addr_rwlock);
 							anycast_roaming_rpath_put(rpath_entry);
+							read_unlock_bh(&g_addr_rwlock);
 							ANYCAST_ROAMING_INC_STATS(ext_stats, ANYCAST_ROAMING_RELAY_OUT_CNT);
 							return NF_STOLEN;
 						} else {
@@ -1596,8 +1592,8 @@ rx_out2:
 						struct sk_buff *segs;
 						segs = skb_gso_segment(skb, 0);
 						if (unlikely(IS_ERR(segs))) {
-							read_unlock_bh(&g_addr_rwlock);
 							anycast_roaming_notify_put(entry);
+							read_unlock_bh(&g_addr_rwlock);
 							return NF_DROP;
 						}
 						kfree_skb(skb);
@@ -1608,8 +1604,8 @@ rx_out2:
 							segs = nskb;
 						} while (segs);
 					}
-					read_unlock_bh(&g_addr_rwlock);
 					anycast_roaming_notify_put(entry);
+					read_unlock_bh(&g_addr_rwlock);
 					return NF_STOLEN;
 				}
 				anycast_roaming_notify_put(entry);
@@ -1711,13 +1707,13 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 		rpath_entry = anycast_roaming_rpath_get(&tuple);
 		if (rpath_entry) {
 			if (rpath_entry->origin == addr_entry->my_notify_addr) {
-				read_unlock_bh(&g_addr_rwlock);
 				anycast_roaming_rpath_put(rpath_entry);
+				read_unlock_bh(&g_addr_rwlock);
 				goto out;
 			}
 			if (nf_conntrack_confirm(skb) != NF_ACCEPT) {
-				read_unlock_bh(&g_addr_rwlock);
 				anycast_roaming_rpath_put(rpath_entry);
+				read_unlock_bh(&g_addr_rwlock);
 				return NF_DROP;
 			}
 			memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
@@ -1727,8 +1723,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 				if (skb->ip_summed != CHECKSUM_NONE && skb->ip_summed != CHECKSUM_UNNECESSARY) {
 					int data_len = ntohs(ih->tot_len) - hdr_len;
 					if (!skb_make_writable(skb, hdr_len + sizeof(struct tcphdr))) {
-						read_unlock_bh(&g_addr_rwlock);
 						anycast_roaming_rpath_put(rpath_entry);
+						read_unlock_bh(&g_addr_rwlock);
 						return NF_DROP;
 					}
 					tcp_hdr(skb)->check = 0;
@@ -1739,8 +1735,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 				struct sk_buff *segs;
 				segs = skb_gso_segment(skb, 0);
 				if (unlikely(IS_ERR(segs))) {
-					read_unlock_bh(&g_addr_rwlock);
 					anycast_roaming_rpath_put(rpath_entry);
+					read_unlock_bh(&g_addr_rwlock);
 					return NF_DROP;
 				}
 				kfree_skb(skb);
@@ -1751,8 +1747,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					segs = nskb;
 				} while (segs);
 			}
-			read_unlock_bh(&g_addr_rwlock);
 			anycast_roaming_rpath_put(rpath_entry);
+			read_unlock_bh(&g_addr_rwlock);
 			return NF_STOLEN;
 		} else if(addr_entry->mode == ANYCAST_ROAMING_MODE_TUNNEL) {
 #if !defined(LOCAL_POC)
@@ -1772,7 +1768,6 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 						int data_len = ntohs(ih->tot_len) - hdr_len;
 						if (!skb_make_writable(skb, hdr_len + sizeof(struct tcphdr))) {
 							read_unlock_bh(&g_addr_rwlock);
-							anycast_roaming_rpath_put(rpath_entry);
 							return NF_DROP;
 						}
 						tcp_hdr(skb)->check = 0;
@@ -1784,7 +1779,6 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					segs = skb_gso_segment(skb, 0);
 					if (unlikely(IS_ERR(segs))) {
 						read_unlock_bh(&g_addr_rwlock);
-						anycast_roaming_rpath_put(rpath_entry);
 						return NF_DROP;
 					}
 					kfree_skb(skb);
@@ -1818,13 +1812,13 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 		rpath_entry = anycast_roaming_rpath_get(&tuple);
 		if (rpath_entry) {
 			if (rpath_entry->origin == addr_entry->my_notify_addr) {
-				read_unlock_bh(&g_addr_rwlock);
 				anycast_roaming_rpath_put(rpath_entry);
+				read_unlock_bh(&g_addr_rwlock);
 				goto out;
 			}
 			if (nf_conntrack_confirm(skb) != NF_ACCEPT) {
-				read_unlock_bh(&g_addr_rwlock);
 				anycast_roaming_rpath_put(rpath_entry);
+				read_unlock_bh(&g_addr_rwlock);
 				return NF_DROP;
 			}
 			memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
@@ -1834,8 +1828,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 				if (skb->ip_summed != CHECKSUM_NONE && skb->ip_summed != CHECKSUM_UNNECESSARY) {
 					int data_len = ntohs(ih->tot_len) - hdr_len;
 					if (!skb_make_writable(skb, hdr_len + sizeof(struct udphdr))) {
-						read_unlock_bh(&g_addr_rwlock);
 						anycast_roaming_rpath_put(rpath_entry);
+						read_unlock_bh(&g_addr_rwlock);
 						return NF_DROP;
 					}
 					udp_hdr(skb)->check = 0;
@@ -1846,8 +1840,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 				struct sk_buff *segs;
 				segs = skb_gso_segment(skb, 0);
 				if (unlikely(IS_ERR(segs))) {
-					read_unlock_bh(&g_addr_rwlock);
 					anycast_roaming_rpath_put(rpath_entry);
+					read_unlock_bh(&g_addr_rwlock);
 					return NF_DROP;
 				}
 				kfree_skb(skb);
@@ -1858,8 +1852,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					segs = nskb;
 				} while (segs);
 			}
-			read_unlock_bh(&g_addr_rwlock);
 			anycast_roaming_rpath_put(rpath_entry);
+			read_unlock_bh(&g_addr_rwlock);
 			return NF_STOLEN;
 		} else if(addr_entry->mode == ANYCAST_ROAMING_MODE_TUNNEL) {
 #if !defined(LOCAL_POC)
@@ -1879,7 +1873,6 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 						int data_len = ntohs(ih->tot_len) - hdr_len;
 						if (!skb_make_writable(skb, hdr_len + sizeof(struct udphdr))) {
 							read_unlock_bh(&g_addr_rwlock);
-							anycast_roaming_rpath_put(rpath_entry);
 							return NF_DROP;
 						}
 						udp_hdr(skb)->check = 0;
@@ -1891,7 +1884,6 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					segs = skb_gso_segment(skb, 0);
 					if (unlikely(IS_ERR(segs))) {
 						read_unlock_bh(&g_addr_rwlock);
-						anycast_roaming_rpath_put(rpath_entry);
 						return NF_DROP;
 					}
 					kfree_skb(skb);
@@ -1925,13 +1917,13 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 		rpath_entry = anycast_roaming_rpath_get(&tuple);
 		if (rpath_entry) {
 			if (rpath_entry->origin == addr_entry->my_notify_addr) {
-				read_unlock_bh(&g_addr_rwlock);
 				anycast_roaming_rpath_put(rpath_entry);
+				read_unlock_bh(&g_addr_rwlock);
 				goto out;
 			}
 			if (nf_conntrack_confirm(skb) != NF_ACCEPT) {
-				read_unlock_bh(&g_addr_rwlock);
 				anycast_roaming_rpath_put(rpath_entry);
+				read_unlock_bh(&g_addr_rwlock);
 				return NF_DROP;
 			}
 			memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
@@ -1941,8 +1933,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 				if (skb->ip_summed != CHECKSUM_NONE && skb->ip_summed != CHECKSUM_UNNECESSARY) {
 					int data_len = ntohs(ih->tot_len) - hdr_len;
 					if (!skb_make_writable(skb, hdr_len + sizeof(struct icmphdr))) {
-						read_unlock_bh(&g_addr_rwlock);
 						anycast_roaming_rpath_put(rpath_entry);
+						read_unlock_bh(&g_addr_rwlock);
 						return NF_DROP;
 					}
 					icmp_hdr(skb)->checksum = 0;
@@ -1953,8 +1945,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 				struct sk_buff *segs;
 				segs = skb_gso_segment(skb, 0);
 				if (unlikely(IS_ERR(segs))) {
-					read_unlock_bh(&g_addr_rwlock);
 					anycast_roaming_rpath_put(rpath_entry);
+					read_unlock_bh(&g_addr_rwlock);
 					return NF_DROP;
 				}
 				kfree_skb(skb);
@@ -1965,8 +1957,8 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					segs = nskb;
 				} while (segs);
 			}
-			read_unlock_bh(&g_addr_rwlock);
 			anycast_roaming_rpath_put(rpath_entry);
+			read_unlock_bh(&g_addr_rwlock);
 			return NF_STOLEN;
 		} else if(addr_entry->mode == ANYCAST_ROAMING_MODE_TUNNEL) {
 #if !defined(LOCAL_POC)
@@ -1986,7 +1978,6 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 						int data_len = ntohs(ih->tot_len) - hdr_len;
 						if (!skb_make_writable(skb, hdr_len + sizeof(struct icmphdr))) {
 							read_unlock_bh(&g_addr_rwlock);
-							anycast_roaming_rpath_put(rpath_entry);
 							return NF_DROP;
 						}
 						icmp_hdr(skb)->checksum = 0;
@@ -1998,7 +1989,6 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					segs = skb_gso_segment(skb, 0);
 					if (unlikely(IS_ERR(segs))) {
 						read_unlock_bh(&g_addr_rwlock);
-						anycast_roaming_rpath_put(rpath_entry);
 						return NF_DROP;
 					}
 					kfree_skb(skb);
@@ -2198,9 +2188,9 @@ static int anycast_roaming_addr_set_config(char* configstr)
 found:
 		read_unlock(&dev_base_lock);
 		if (entry->my_notify_addr == 0) {
+			struct anycast_roaming_notify_list_entry *tmp;
 			write_unlock_bh(&g_addr_rwlock);
 			printk("local unicast address not found!\n");
-			struct anycast_roaming_notify_list_entry *tmp;
 			list_for_each_entry_safe(entry2, tmp, &entry->notify_list, list) {
 				list_del(&entry2->list);
 				kmem_cache_free(anycast_roaming_cachep_l, entry2);
