@@ -1834,6 +1834,9 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					}
 					udp_hdr(skb)->check = 0;
 					udp_hdr(skb)->check = csum_tcpudp_magic(ip_hdr(skb)->saddr, ip_hdr(skb)->daddr, data_len, ip_hdr(skb)->protocol, skb_checksum(skb, hdr_len, data_len, 0));
+					if (udp_hdr(skb)->check == 0) {
+						udp_hdr(skb)->check = CSUM_MANGLED_0;
+					}
 				}
 				send_encapsulated(state->net, addr_entry->my_notify_addr, rpath_entry->origin, skb, ANYCAST_ROAMING_ENCAP_OUT);
 			} else {
@@ -1877,6 +1880,9 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 						}
 						udp_hdr(skb)->check = 0;
 						udp_hdr(skb)->check = csum_tcpudp_magic(ip_hdr(skb)->saddr, ip_hdr(skb)->daddr, data_len, ip_hdr(skb)->protocol, skb_checksum(skb, hdr_len, data_len, 0));
+						if (udp_hdr(skb)->check == 0) {
+							udp_hdr(skb)->check = CSUM_MANGLED_0;
+						}
 					}
 					send_encapsulated(state->net, addr_entry->my_notify_addr, notify_entry->addr, skb, ANYCAST_ROAMING_ENCAP_OUT);
 				} else {
