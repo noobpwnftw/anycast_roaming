@@ -1196,7 +1196,7 @@ anycast_roaming_in_hook(void *priv, struct sk_buff *skb, const struct nf_hook_st
 						read_unlock_bh(&g_addr_rwlock);
 						return NF_DROP;
 					}
-					kfree_skb(skb);
+					consume_skb(skb);
 					do {
 						struct sk_buff *nskb = segs->next;
 						segs->next = NULL;
@@ -1239,7 +1239,7 @@ anycast_roaming_in_hook(void *priv, struct sk_buff *skb, const struct nf_hook_st
 								read_unlock_bh(&g_addr_rwlock);
 								return NF_DROP;
 							}
-							kfree_skb(skb);
+							consume_skb(skb);
 							do {
 								struct sk_buff *nskb = segs->next;
 								segs->next = NULL;
@@ -1472,17 +1472,15 @@ rx_out1:
 							return NF_STOLEN;
 						} else {
 							notify_entry = list_last_entry(&addr_entry->notify_list, struct anycast_roaming_notify_list_entry, list);
-							if (notify_entry->addr == addr_entry->my_notify_addr) {
+							if (notify_entry->addr != addr_entry->my_notify_addr) {
+								memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+								IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
+								nf_reset(skb);
+								send_relay(state->net, addr_entry->my_notify_addr, notify_entry->addr, skb);
 								read_unlock_bh(&g_addr_rwlock);
-								goto out;
+								ANYCAST_ROAMING_INC_STATS(ext_stats, ANYCAST_ROAMING_RELAY_OUT_CNT);
+								return NF_STOLEN;
 							}
-							memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
-							IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
-							nf_reset(skb);
-							send_relay(state->net, addr_entry->my_notify_addr, notify_entry->addr, skb);
-							read_unlock_bh(&g_addr_rwlock);
-							ANYCAST_ROAMING_INC_STATS(ext_stats, ANYCAST_ROAMING_RELAY_OUT_CNT);
-							return NF_STOLEN;
 						}
 					}
 					read_unlock_bh(&g_addr_rwlock);
@@ -1497,6 +1495,7 @@ rx_out1:
 						ip_rt_put(rt);
 						return NF_DROP;
 					}
+					skb->ignore_df = 1;
 					memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
 					IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED | IPSKB_REROUTED);
 					nf_reset(skb);
@@ -1559,7 +1558,7 @@ rx_out2:
 					read_unlock_bh(&g_addr_rwlock);
 					return NF_DROP;
 				}
-				kfree_skb(skb);
+				consume_skb(skb);
 				do {
 					struct sk_buff *nskb = segs->next;
 					segs->next = NULL;
@@ -1596,7 +1595,7 @@ rx_out2:
 							read_unlock_bh(&g_addr_rwlock);
 							return NF_DROP;
 						}
-						kfree_skb(skb);
+						consume_skb(skb);
 						do {
 							struct sk_buff *nskb = segs->next;
 							segs->next = NULL;
@@ -1631,7 +1630,7 @@ rx_out2:
 							read_unlock_bh(&g_addr_rwlock);
 							return NF_DROP;
 						}
-						kfree_skb(skb);
+						consume_skb(skb);
 						do {
 							struct sk_buff *nskb = segs->next;
 							segs->next = NULL;
@@ -1739,7 +1738,7 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					read_unlock_bh(&g_addr_rwlock);
 					return NF_DROP;
 				}
-				kfree_skb(skb);
+				consume_skb(skb);
 				do {
 					struct sk_buff *nskb = segs->next;
 					segs->next = NULL;
@@ -1781,7 +1780,7 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 						read_unlock_bh(&g_addr_rwlock);
 						return NF_DROP;
 					}
-					kfree_skb(skb);
+					consume_skb(skb);
 					do {
 						struct sk_buff *nskb = segs->next;
 						segs->next = NULL;
@@ -1847,7 +1846,7 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					read_unlock_bh(&g_addr_rwlock);
 					return NF_DROP;
 				}
-				kfree_skb(skb);
+				consume_skb(skb);
 				do {
 					struct sk_buff *nskb = segs->next;
 					segs->next = NULL;
@@ -1892,7 +1891,7 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 						read_unlock_bh(&g_addr_rwlock);
 						return NF_DROP;
 					}
-					kfree_skb(skb);
+					consume_skb(skb);
 					do {
 						struct sk_buff *nskb = segs->next;
 						segs->next = NULL;
@@ -1955,7 +1954,7 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 					read_unlock_bh(&g_addr_rwlock);
 					return NF_DROP;
 				}
-				kfree_skb(skb);
+				consume_skb(skb);
 				do {
 					struct sk_buff *nskb = segs->next;
 					segs->next = NULL;
@@ -1997,7 +1996,7 @@ anycast_roaming_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
 						read_unlock_bh(&g_addr_rwlock);
 						return NF_DROP;
 					}
-					kfree_skb(skb);
+					consume_skb(skb);
 					do {
 						struct sk_buff *nskb = segs->next;
 						segs->next = NULL;
