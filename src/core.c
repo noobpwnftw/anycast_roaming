@@ -1506,9 +1506,17 @@ rx_out1:
 					skb_dst_set(skb, &rt->dst);
 					IPCB(skb)->flags |= IPSKB_REROUTED;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0)
-					dst_output(skb);
+					if (likely(nf_hook(NFPROTO_IPV4, NF_INET_LOCAL_OUT, NULL, skb, NULL, skb_dst(skb)->dev, dst_output_sk) == 1)) {
+						dst_output_sk(NULL, skb);
+					} else {
+						return NF_DROP;
+					}
 #else
-					dst_output(state->net, NULL, skb);
+					if (likely(nf_hook(NFPROTO_IPV4, NF_INET_LOCAL_OUT, state->net, NULL, skb, NULL, skb_dst(skb)->dev, dst_output) == 1)) {
+						dst_output(state->net, NULL, skb);
+					} else {
+						return NF_DROP;
+					}
 #endif
 					ANYCAST_ROAMING_INC_STATS(ext_stats, ANYCAST_ROAMING_DECAPSULATE_OUT_CNT);
 					return NF_STOLEN;
