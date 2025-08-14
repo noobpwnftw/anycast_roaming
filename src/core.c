@@ -4,7 +4,6 @@
 #include <linux/module.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
-#include <linux/ip.h>
 #include <linux/jhash.h>
 #include <linux/random.h>
 #include <net/net_namespace.h>
@@ -1090,9 +1089,10 @@ inline bool is_notify_tcp(struct tcphdr *th)
 
 inline bool is_notify_udp(struct net *net, struct udphdr *uh)
 {
-	int low, high;
+	int low, high, sport;
 	inet_get_local_port_range(net, &low, &high);
-	if (uh->source >= low && uh->source <= high) {
+	sport = ntohs(uh->source);
+	if (sport >= low && sport <= high) {
 		return true;
 	} else {
 		return false;
@@ -1619,7 +1619,7 @@ rx_out2:
 			} else if (addr_entry->reroute > 0) {
 				unsigned long rand;
 				get_random_bytes(&rand, sizeof(rand));
-		 		if (rand % 100 <= addr_entry->reroute) {
+		 		if (rand % 100 < addr_entry->reroute) {
 					struct anycast_roaming_notify_list_entry* notify_entry;
 					notify_entry = list_last_entry(&addr_entry->notify_list, struct anycast_roaming_notify_list_entry, list);
 					if (notify_entry->addr == addr_entry->my_notify_addr) {
@@ -2044,49 +2044,25 @@ static struct nf_hook_ops anycast_roaming_ops[] __read_mostly = {
 	},
 };
 
-static int is_valid_ip(const char *ip)
+static int is_valid_ip(const char *s)
 {
-	int section = 0;
-	int dot = 0;
-
-	if (!ip)
-		return 0;
-
-	while (*ip) {
-		if (*ip == '.') {
-			dot++; 
-			if (dot > 3) {
-				return 0;
-			} 
-
-			if (section >= 0 && section <=255) {
-				section = 0;
-			} else {
-				return 0;
-			} 
-
-			if (*(ip+1) == '0') {
-				return 0;
-			}
-
-		} else if (*ip >= '0' && *ip <= '9') {
-			section = section * 10 + *ip - '0';
-		} else {
-			return 0;
+	int i;
+	if (!s) return 0;
+	for (i = 0; i < 4; i++) {
+		int val = 0, digits = 0;
+		if (s[0] == '0' && s[1] >= '0' && s[1] <= '9') return 0;
+		while (*s >= '0' && *s <= '9') {
+			val = val * 10 + (*s - '0');
+			s++;
+			if (++digits > 3) return 0;
 		}
-
-		ip++;
+		if (digits == 0 || val > 255) return 0;
+		if (i < 3) {
+			if (*s != '.') return 0;
+			s++; /* skip '.' */
+		}
 	}
-
-	if (section < 0 || section > 255) {
-		section = 0;
-		return 0;
-	} 
-
-	if (dot != 3)
-		return 0;
-
-	return 1;
+	return *s == '\0';
 }
 
 #define ANYCAST_ROAMING_CONFIG_MAX ((17+2+3+17*128+1)*255+1)
